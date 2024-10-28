@@ -93,7 +93,7 @@
 param (
     [Parameter(Mandatory = $true)][ValidateScript({ Test-Path -Path $_ })][String]$RoboLog,
     [Parameter(Mandatory = $false)][ValidateSet("en-US", "fr-FR")][String]$LogLanguage = "en-US",
-    [Parameter(Mandatory = $false)][ValidateSet("Full", "HeadSum")][String]$ParseType = "Full"
+    [Parameter(Mandatory = $false)][ValidateSet("Full", "NoParseFile")][String]$ParseType = "Full"
 )
 
 function ConvertFrom-RobocopLog {
@@ -268,19 +268,7 @@ function ConvertFrom-RobocopLog {
     #endregion Initialize OutputObject
 
     #region Initialize LogLines
-        switch ($ParseType) {
-            "Full" { 
-                $LogContent= Get-Content -Path $RoboLog -ReadCount 0
-                Break
-            }
-            "HeadSum" {  
-                $HeaderLines = Get-Content -Path $RoboLog -ReadCount 0 | Select-Object -First 30
-                $SummaryLines = Get-Content -Path $RoboLog -ReadCount 0 | Select-Object -Last 30
-                $LogContent = $HeaderLines + $SummaryLines
-                Break
-            }
-            Default {}
-        }
+        $LogContent= Get-Content -Path $RoboLog -ReadCount 0
     #endregion Initialize LogLines
 
     #region Parsing LogContent
@@ -319,11 +307,6 @@ function ConvertFrom-RobocopLog {
 
                             #Capture the full path of the file
                             $filePath = $matches[3].Trim()
-                            $Log.Files.New += [pscustomobject]@{
-                                FilePath   = $filePath    
-                                FileSize   = $fileSizeRaw  
-                                Timestamp  = $fileTimestamp 
-                            }
 
                             #Checking for file existence in $Log.Files.New list by comparing all properties
                             $NewFileExists = $Log.Files.New | Where-Object {
@@ -340,7 +323,7 @@ function ConvertFrom-RobocopLog {
                                     Timestamp  = $fileTimestamp 
                                 }
                             }else{
-                                Write-Warning "$($Culture.WarningNewFileExist) : $($NewFilExists.FilePath)"
+                                Write-Warning "$($Culture.WarningNewFileExist) : $($NewFileExists.FilePath)"
                             }
                         }
                     }
