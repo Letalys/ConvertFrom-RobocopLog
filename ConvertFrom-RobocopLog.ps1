@@ -79,652 +79,560 @@
     AUTHOR              : Letalys
 
     SCRIPT              : ConvertFrom-RobocopLog.ps1
-    SCRIPTVERSION       : 1.01
+    SCRIPTVERSION       : 2.0
 
     RELEASENOTES        : Version 1.0  | 2024-09-26
-                                         Initial version.
-			  Version 1.01 | 2024-09-27
+                                Initial version.
+			              Version 1.01 | 2024-09-27
                                Bug fix : When the $ParseType option was full, the end summary was not correctly parsed due to a bad condition
+                          Version 2.0 | 2024-10-27
+                                Issue #2 : New Method to browse log file. This script now integrate the log file into an array and browse it.
 
 #>
 
-
 param (
-    [Parameter(Mandatory = $true)]
-    [ValidateScript({ Test-Path -Path $_ })]
-    [String]$RoboLog,
-
-    [Parameter(Mandatory = $false)]
-    [ValidateSet("en-US", "fr-FR")]
-    [String]$LogLanguage = "en-US",
-
-    [Parameter(Mandatory = $false)]
-    [ValidateSet("Full", "NoParseFile")]
-    [String]$ParseType = "Full"
+    [Parameter(Mandatory = $true)][ValidateScript({ Test-Path -Path $_ })][String]$RoboLog,
+    [Parameter(Mandatory = $false)][ValidateSet("en-US", "fr-FR")][String]$LogLanguage = "en-US",
+    [Parameter(Mandatory = $false)][ValidateSet("Full", "NoParseFile")][String]$ParseType = "Full"
 )
 
 function ConvertFrom-RobocopLog {
     [CmdletBinding()]
     param (
-        [Parameter(Mandatory = $true)]
-        [ValidateScript({ Test-Path -Path $_ })]
-        [String]$RoboLog,
-
-        [Parameter(Mandatory = $false)]
-        [ValidateSet("en-US", "fr-FR")]
-        [String]$LogLanguage = "en-US",
-
-        [Parameter(Mandatory = $false)]
-        [ValidateSet("Full", "NoParseFile")]
-        [String]$ParseType = "Full"
+        [Parameter(Mandatory = $true)][ValidateScript({ Test-Path -Path $_ })][String]$RoboLog,
+        [Parameter(Mandatory = $false)][ValidateSet("en-US", "fr-FR")][String]$LogLanguage = "en-US",
+        [Parameter(Mandatory = $false)][ValidateSet("Full", "NoParseFile")][String]$ParseType = "Full"
     )
 
-    # Management of keyword dictionaries according to language.
-    $CultureMap = @{
-        "en-US" = @{
-			#Parsing header
-            Start        = "Started :"
-            Source       = "Source :"
-            Destination  = "Dest :"
-            FilesSection = "Files :"
-            Options      = "Options :"
-			
-			#Parsing Files
-            NewFile      = "New File"
-            NewerFile    = "Newer"
-            OlderFile    = "Older"
-            SameFile     = "same"
-			ExtraFile    = "EXTRA File"
-            ModifiedFile = "Modified"
-            LonelyFile   = "lonely"
-            TweakedFile  = "tweaked"
-			
-			#Parsing Directories
-            NewDir       = "New Dir"
-            ExtraDir     = "EXTRA Dir"
-            LonelyDir    = "lonely"
+    #region CultureMap
+        #Management of keyword dictionaries according to language.
+        $CultureMap = @{
+            "en-US" = @{
+                #RobocopParsing
+                RobocopParsingStart    = "Start parsing..."
+                RobocopParsingFinalize = "End parsing..."
 
-            #Error
-            Error             = "ERROR"
-            ErrorCopyFile     = "Copying File"
-            ErrorDelFile      = "Deleting File"
-            ErrorDelExtraFile = "Deleting Extra File"
-			
-			#Parsing Summary
-            DirsSummary  = "Dirs :"
-            FilesSummary = "Files :"
-            Bytes        = "Bytes :"
-            Times        = "Times :"
-            Ended        = "Ended :"
+                #Parsing header
+                Start        = "Started :"
+                Source       = "Source :"
+                Destination  = "Dest :"
+                FilesSection = "Files :"
+                Options      = "Options :"
 
-            #Warning Script
-            WarningDateTime            = "Timestamp could not be converted to DateTime."
-            WarningNewFileExist        = "New File           : This entry already exist and will not be added."
-            WarningModifiedFileExist   = "Modified File      : This entry already exist and will not be added."
-            WarningNewerFileExist      = "Newer File         : This entry already exist and will not be added."
-            WarningOlderFileExist      = "Older File         : This entry already exist and will not be added."
-            WarningExtraFileExist      = "Extra File         : This entry already exist and will not be added."
-            WarningTweakedFileExist    = "Tweaked File (Attr): This entry already exist and will not be added."
-            WarningFailedFileExist     = "Failed File        : This entry already exist and will not be added."
+                #Parsing Files
+                NewFile      = "New File"
+                NewerFile    = "Newer"
+                OlderFile    = "Older"
+                SameFile     = "same"
+                ExtraFile    = "EXTRA File"
+                ModifiedFile = "Modified"
+                LonelyFile   = "lonely"
+                TweakedFile  = "tweaked"
+
+                #Parsing Directories
+                NewDir       = "New Dir"
+                ExtraDir     = "EXTRA Dir"
+                LonelyDir    = "lonely"
+
+                #Error
+                Error             = "ERROR"
+                ErrorCopyFile     = "Copying File"
+                ErrorDelFile      = "Deleting File"
+                ErrorDelExtraFile = "Deleting Extra File"
+
+                #Parsing Summary
+                DirsSummary  = "Dirs :"
+                FilesSummary = "Files :"
+                Bytes        = "Bytes :"
+                Times        = "Times :"
+                Ended        = "Ended :"
+
+                #Warning Script
+                WarningDateTime                = "Timestamp could not be converted to DateTime."
+                WarningNewFileExist            = "New File           : This entry already exist and will not be added."
+                WarningModifiedFileExist       = "Modified File      : This entry already exist and will not be added."
+                WarningLonelyFileExist         = "Lonely File        : This entry already exist and will not be added."
+                WarningNewerFileExist          = "Newer File         : This entry already exist and will not be added."
+                WarningOlderFileExist          = "Older File         : This entry already exist and will not be added."
+                WarningExtraFileExist          = "Extra File         : This entry already exist and will not be added."
+                WarningTweakedFileExist        = "Tweaked File (Attr): This entry already exist and will not be added."
+                WarningFailedFileExist         = "Failed File        : This entry already exist and will not be added."
+                WarningFailedTimeFromInnerLog  = "Unable to calculate TotalTimeFromInnerLog due to incorrect date format in Robocopy log"
+                WarningFailedTimeFromMetadata  = "Unable to calculate TotalTimeFromFile due to an error with the file metadata."
+            }
+            "fr-FR" = @{
+                # Added non-breaking space (Unicode \u00A0)
+                #RobocopParsing
+                RobocopParsingStart    = "D$([char]0x00E9)but du parsing..."
+                RobocopParsingFinalize = "Fin du parsing..."
+
+                #Parsing header
+                Start        = "D$([char]0x00E9)marrage$([char]0x00A0):"
+                Source       = "Source :"
+                Destination  = "Dest :"
+                FilesSection = "Fichiers :"
+                Options      = "Options :"
+                
+                #Parsing Files
+                NewFile      = "Nouveau fichier"
+                NewerFile    = "Plus r$([char]0x00E9)cent"
+                OlderFile    = "Plus ancien"
+                SameFile     = "identique"
+                ExtraFile    = "Fichier SUPPL."
+                ModifiedFile = "Modifi$([char]0x00E9)"
+                LonelyFile   = "solitaire"
+                TweakedFile  = "<TWEAKED F>"
+                    
+                #Parsing Directories
+                NewDir       = "Nouveau r$([char]0x00E9)p."
+                ExtraDir     = "R$([char]0x00E9)p. SUPPL."
+                LonelyDir    = "solitaire"
+
+                #Error
+                Error             = "ERREUR"
+                ErrorCopyFile     = "Copying File"
+                ErrorDelFile      = "Deleting File"
+                ErrorDelExtraFile = "Deleting Extra File"
+                
+                #Parsing Summary
+                DirsSummary  = "R$([char]0x00E9)p$([char]0x00A0):"  
+                FilesSummary = "Fichiers$([char]0x00A0):"
+                Bytes        = "Octets$([char]0x00A0):"
+                Times        = "Heures:"
+                Ended        = "Fin :"
+
+                #Warning Scripts
+                WarningDateTime                = "L'horodatage n'a pas pu être converti en DateTime."
+                WarningNewFileExist            = "Nouveau Fichier                     : Cette entr$([char]0x00E9)e existe d$([char]0x00E9)j$([char]0x00E0) et ne sera pas ajout$([char]0x00E9)e."
+                WarningModifiedFileExist       = "Fichier Modifi$([char]0x00E9)       : Cette entr$([char]0x00E9)e existe d$([char]0x00E9)j$([char]0x00E0) et ne sera pas ajout$([char]0x00E9)e."
+                WarningLonelyFileExist         = "Fichier Solitaire                   : Cette entr$([char]0x00E9)e existe d$([char]0x00E9)j$([char]0x00E0) et ne sera pas ajout$([char]0x00E9)e."
+                WarningNewerFileExist          = "Fichier R$([char]0x00E9)cent        : Cette entr$([char]0x00E9)e existe d$([char]0x00E9)j$([char]0x00E0) et ne sera pas ajout$([char]0x00E9)e."
+                WarningOlderFileExist          = "Fichier Ancien                      : Cette entr$([char]0x00E9)e existe d$([char]0x00E9)j$([char]0x00E0) et ne sera pas ajout$([char]0x00E9)e."
+                WarningExtraFileExist          = "Fichier Suppl.                      : Cette entr$([char]0x00E9)e existe d$([char]0x00E9)j$([char]0x00E0) et ne sera pas ajout$([char]0x00E9)e."
+                WarningTweakedFileExist        = "Fichier Tweaked (Attr)              : Cette entr$([char]0x00E9)e existe d$([char]0x00E9)j$([char]0x00E0) et ne sera pas ajout$([char]0x00E9)e."
+                WarningFailedFileExist         = "Fichier Echec                       : Cette entr$([char]0x00E9)e existe d$([char]0x00E9)j$([char]0x00E0) et ne sera pas ajout$([char]0x00E9)e."
+                WarningFailedTimeFromInnerLog  = "Impossible de calculer TotalTimeFromInnerLog en raison d'un format de date incorrect dans le journal Robocopy"
+                WarningFailedTimeFromMetadata  = "Impossible de calculer TotalTimeFromFile en raison d'une erreur avec les m$([char]0x00E9)tadonn$([char]0x00E9)es du fichier."
+            }
         }
-        "fr-FR" = @{
-            #Parsing header
-            Start        = "Démarrage :"
-            Source       = "Source :"
-            Destination  = "Dest :"
-            FilesSection = "Fichiers :"
-            Options      = "Options :"
-			
-			#Parsing Files
-            NewFile      = "Nouveau fichier"
-            NewerFile    = "Plus récent"
-            OlderFile    = "Plus ancien"
-            SameFile     = "identique"
-			ExtraFile    = "Fichier SUPPL."
-            ModifiedFile = "Modifié"
-            LonelyFile   = "solitaire"
-            TweakedFile  = "<TWEAKED F>"
-            	
-			#Parsing Directories
-            NewDir       = "Nouveau rép."
-            ExtraDir     = "Rép. SUPPL."
-            LonelyDir    = "solitaire"
+        $Culture = $CultureMap[$LogLanguage]
+    #endregion CultureMap
 
-            #Error
-            Error             = "ERREUR"
-            ErrorCopyFile     = "Copying File"
-            ErrorDelFile      = "Deleting File"
-            ErrorDelExtraFile = "Deleting Extra File"
-			
-			#Parsing Summary
-            DirsSummary  = "Rép\u00A0:"  # Added non-breaking space (Unicode \u00A0)
-            FilesSummary = "Fichiers\u00A0:"
-            Bytes        = "Octets :"
-            Times        = "Heures:"
-            Ended        = "Fin :"
-
-            #Warning Scripts
-            WarningDateTime            = "L'horodatage n'a pas pu être converti en DateTime."
-            WarningNewFileExist        = "Nouveau Fichier       : Cette entrée existe déjà et ne sera pas ajoutée."
-            WarningModifiedFileExist   = "Fichier Modifié       : Cette entrée existe déjà et ne sera pas ajoutée."
-            WarningNewerFileExist      = "Fichier Récent        : Cette entrée existe déjà et ne sera pas ajoutée."
-            WarningOlderFileExist      = "Fichier Ancien        : Cette entrée existe déjà et ne sera pas ajoutée."
-            WarningExtraFileExist      = "Fichier Suppl.        : Cette entrée existe déjà et ne sera pas ajoutée."
-            WarningTweakedFileExist    = "Fichier Modifié (Attr): Cette entrée existe déjà et ne sera pas ajoutée."
-            WarningFailedFileExist     = "Fichier Echec         : Cette entrée existe déjà et ne sera pas ajoutée."
-        }
-    }
-
-    $Culture = $CultureMap[$LogLanguage]
-
-    # Initializing the output object
-    $Log = [pscustomobject]@{
-        HeaderInfo = [pscustomobject]@{
-            Start        = $null
-            Source       = $null
-            Destination  = $null
-            FilesOptions = $null
-            Options      = $null
-        }
-        Files = [pscustomobject]@{
-            New          = @()
-            Same         = @()
-            Newer        = @()
-            Older        = @()
-            Extra        = @()
-            Failed       = @()
-            Modified     = @()
-            Lonely       = @()
-            Tweaked      = @()
-        }
-        Dirs = [pscustomobject]@{
-            New          = @()
-            Extra        = @()
-            Lonely       = @()
-        }
-        SummaryInfo = [pscustomobject]@{
-            Dirs  = [pscustomobject]@{
-                Total    = $null
-                Copied   = $null
-                Skipped  = $null
-                Mismatch = $null
-                Failed   = $null
-                Extras   = $null
+    #region Initialize OutputObject
+        $Log = [pscustomobject]@{
+            HeaderInfo = [pscustomobject]@{
+                Start        = $null
+                Source       = $null
+                Destination  = $null
+                FilesOptions = $null
+                Options      = $null
             }
             Files = [pscustomobject]@{
-                Total    = $null
-                Copied   = $null
-                Skipped  = $null
-                Mismatch = $null
-                Failed   = $null
-                Extras   = $null
+                New          = @()
+                Same         = @()
+                Newer        = @()
+                Older        = @()
+                Extra        = @()
+                Failed       = @()
+                Modified     = @()
+                Lonely       = @()
+                Tweaked      = @()
             }
-            Ended                 = $null
-            TotalTimeFromInnerLog = $null
-            TotalTimeFromFile     = $null
-        }
+            Dirs = [pscustomobject]@{
+                New          = @()
+                Extra        = @()
+                Lonely       = @()
+            }
+            SummaryInfo = [pscustomobject]@{
+                Dirs  = [pscustomobject]@{
+                    Total    = $null
+                    Copied   = $null
+                    Skipped  = $null
+                    Mismatch = $null
+                    Failed   = $null
+                    Extras   = $null
+                }
+                Files = [pscustomobject]@{
+                    Total    = $null
+                    Copied   = $null
+                    Skipped  = $null
+                    Mismatch = $null
+                    Failed   = $null
+                    Extras   = $null
+                }
+                Ended                 = $null
+                TotalTimeFromInnerLog = $null
+                TotalTimeFromFile     = $null
+            }
     }
+    #endregion Initialize OutputObject
 
-    # Reading lines from the log file
-    if ($ParseType -eq "NoParseFile") {
-        # Read the first 15 lines
-        $firstLines = Get-Content -Path $RoboLog | Select-Object -First 15
-    
-        # Read the last 15 lines
-        $lastLines = Get-Content -Path $RoboLog | Select-Object -Last 15
-    
-        # Concatenate the first and last lines
-        $LogLines = $firstLines + $lastLines
-    }
-    else {
-        # Read the entire log file (full option)
-        $LogLines = Get-Content -Path $RoboLog
-    }
-    
-    foreach ($line in $LogLines) {
-        #region Parsing Header
-            if ($line -match "^\s*$($Culture.Start)\s*(.+)$") {
-                $Log.HeaderInfo.Start = $Matches[1].Trim()
-            }
-            elseif ($line -match "^\s*$($Culture.Source)\s*(.+)$") {
-                $Log.HeaderInfo.Source = $Matches[1].Trim()
-            }
-            elseif ($line -match "^\s*$($Culture.Destination)\s*(.+)$") {
-                $Log.HeaderInfo.Destination = $Matches[1].Trim()
-            }
-            elseif ($line -match "^\s*$($Culture.FilesSection)\s*(.+)$" -and $line -notmatch "\d") {
-                $Log.HeaderInfo.FilesOptions = $Matches[1].Trim()
-            }
-            elseif ($line -match "^\s*$($Culture.Options)\s*(.+)$") {
-                $Log.HeaderInfo.Options = $Matches[1].Trim()
-            }
-        #endregion FIN Parsing Header
-        
-        #region Parsing Full (Directory and File)
-            elseif ($ParseType -eq "Full"){
-                #region Parsing File Classes
-					<#
-						New file management with or without size and timestamp
-						The file size (if present) with or without unit --> Allows to manage the Robocopy /NS and /Byte option
-						The timestamp (if present) --> Allows to manage the Robocopy /TS option
-						The full path of the file (local or UNC)
-					#>
-                    if ($line -match "\s*$($Culture.NewFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$") {
-                        # Capture the raw file size (with or without units), if present
-                        $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }  
+    #region Initialize LogLines
+        $LogContent= Get-Content -Path $RoboLog -ReadCount 0
+    #endregion Initialize LogLines
 
-                        # Initialize the variable for the timestamp
-                        $fileTimestamp = $null
-    
-                        # If a timestamp is captured, try to convert it to a DateTime object
-                        if ($matches[2]) {
-                            try {
-                                # ParseExact attempts to convert the timestamp to the format "yyyy/MM/dd HH:mm:ss"
-                                $fileTimestamp = [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null)
+    #region Parsing LogContent
+        #region Header
+            $Log.HeaderInfo.Start = $LogContent | Where-Object { $_ -match "^\s*$($Culture.Start)\s*(.+)$" } | ForEach-Object { $Matches[1].Trim() }
+            $Log.HeaderInfo.Source = $LogContent | Where-Object { $_ -match "^\s*$($Culture.Source)\s*(.+)$" } | ForEach-Object { $Matches[1].Trim() }
+            $Log.HeaderInfo.Destination = $LogContent | Where-Object { $_ -match "^\s*$($Culture.Destination)\s*(.+)$" } | ForEach-Object { $Matches[1].Trim() }
+            $Log.HeaderInfo.FilesOptions = $LogContent | Where-Object { $_ -match "^\s*$($Culture.FilesSection)\s*(.+)$" -and $_ -notmatch "\d" } | ForEach-Object { $Matches[1].Trim() }
+            $Log.HeaderInfo.Options = $LogContent | Where-Object { $_ -match "^\s*$($Culture.Options)\s*(.+)$" } | ForEach-Object { $Matches[1].Trim() }
+        #endregion Header
+
+        if($ParseType -eq "Full"){
+            #region Files and Directories
+                <# 
+                    In the following regular expressions, the following elements are captured:
+                        The file size (if present) with or without unit --> Allows to manage the Robocopy /NS and /Byte option
+                        The timestamp (if present) --> Allows to manage the Robocopy /TS option
+                        The full path of the file (local or UNC)
+                        [^\\] : Test that the last character of the path is not a \, which identifies a file.
+                        .+=[^\\] : This part captures any file path (with spaces or special characters) as long as it does not end with a backslash. 
+                #>
+                #region Classes : Files : NewFile
+                    $NewFileClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.NewFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$" })
+                    $NewFileClass | ForEach-Object {
+                        <# 
+                            Matches is reset with each new match. Even though Where-Object filters matching rows,
+                            you have to rerun -match in the loop for each line and capture the matches in local variables
+                            immediately, so as not to lose the data during subsequent iterations.
+                        #>
+                        if($_ -match "\s*$($Culture.NewFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$"){
+                            #Capture the raw file size (with or without units), if present
+                            $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
+
+                            #If a timestamp is captured, try to convert it to a DateTime object, else return a null value if datetime don't exist.
+                            $fileTimestamp = if ($matches[2]) { [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null) } else { $null }
+
+                            #Capture the full path of the file
+                            $filePath = $matches[3].Trim()
+
+                            #Checking for file existence in $Log.Files.New list by comparing all properties
+                            $NewFileExists = $Log.Files.New | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.FileSize -eq $fileSizeRaw -and
+                                $_.Timestamp -eq $fileTimestamp
                             }
-                            catch {
-                                # If the timestamp is malformed or cannot be converted then warning
-                                Write-Warning "$($Culture.WarningDateTime) '$($matches[2])'"
+
+                            if(-not $NewFileExists){
+                                # Adding the file to the list of new files (NewFiles) with its attributes
+                                $Log.Files.New += [pscustomobject]@{
+                                    FilePath   = $filePath    
+                                    FileSize   = $fileSizeRaw  
+                                    Timestamp  = $fileTimestamp 
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningNewFileExist) : $($NewFileExists.FilePath)"
                             }
-                        }
-
-                        # Capture the full path of the file
-                        $filePath = $matches[3].Trim()
-
-                        # Checking for file existence in $Log.Files.New list by comparing all properties
-                        $NewFileExists = $Log.Files.New | Where-Object {
-                            $_.FilePath -eq $filePath -and
-                            $_.FileSize -eq $fileSizeRaw -and
-                            $_.Timestamp -eq $fileTimestamp
-                        }
-
-                        if(-not $NewFileExists){
-                            # Adding the file to the list of new files (NewFiles) with its attributes
-                            $Log.Files.New += [pscustomobject]@{
-                                FilePath   = $filePath    
-                                FileSize   = $fileSizeRaw  
-                                Timestamp  = $fileTimestamp 
-                            }
-                        }else{
-                            Write-Warning "$($Culture.WarningNewFileExist) : $($NewFilExists.FilePath)"
-                        }
-                
-                    }
-
-                    # Management of modified files (ChangedFile) with recovery of size and timestamp if present
-                    elseif ($line -match "\s*$($Culture.ModifiedFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$") {
-                        # Capture the raw file size (with or without units), if present
-                        $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
-
-                        # Initialize the variable for the timestamp
-                        $fileTimestamp = $null
-    
-                        # If a timestamp is captured, try to convert it to a DateTime object
-                        if ($matches[2]) {
-                            try {
-                                 # ParseExact attempts to convert the timestamp to the format "yyyy/MM/dd HH:mm:ss"
-                                $fileTimestamp = [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null)
-                            }
-                            catch {
-                                 # If the timestamp is malformed or cannot be converted then warning
-                                Write-Warning "$($Culture.WarningDateTime) '$($matches[2])'"
-                            }
-                        }
-
-                        # Capture the full path of the file
-                        $filePath = $matches[3].Trim()
-
-                        # Check if already captured
-                        $ModifiedFileExists = $Log.Files.Modified | Where-Object {
-                            $_.FilePath -eq $filePath -and
-                            $_.FileSize -eq $fileSizeRaw -and
-                            $_.Timestamp -eq $fileTimestamp
-                        }
-
-                        if(-not $ModifiedFileExists){
-                            # Adding the file to the list
-                            $Log.Files.Modified += [pscustomobject]@{
-                                FilePath   = $filePath    
-                                FileSize   = $fileSizeRaw  
-                                Timestamp  = $fileTimestamp 
-                            }
-                        }else{
-                            Write-Warning "$($Culture.WarningModifiedFileExist) : $($ModifiedFileExists.FilePath)"
                         }
                     }
+                #endregion  Classes : Files : NewFile
+                #region Classes : Files : ModifiedFile
+                    $ModifiedFileClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.ModifiedFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$" })
+                    $ModifiedFileClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.ModifiedFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$"){
+                            $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
+                            $fileTimestamp = if ($matches[2]) { [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null) } else { $null }
+                            $filePath = $matches[3].Trim()
 
-					<#
-						LonelyFile management with size and timestamp recovery if present
-						[^\\] : Test that the last character of the path is not a \, which identifies a file.
-						.+=[^\\] : This part captures any file path (with spaces or special characters) as long as it does not end with a backslash.
-					#>
-                    elseif ($line -match "\s*$($Culture.LonelyFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+[^\\])$") {
-                        # Capture the raw file size (with or without units), if present
-                        $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
-
-                        # Initialize the variable for the timestamp
-                        $fileTimestamp = $null
-    
-                        # If a timestamp is captured, try to convert it to a DateTime object
-                        if ($matches[2]) {
-                            try {
-                                 # ParseExact attempts to convert the timestamp to the format "yyyy/MM/dd HH:mm:ss"
-                                $fileTimestamp = [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null)
+                            $ModifiedFileExists = $Log.Files.Modified | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.FileSize -eq $fileSizeRaw -and
+                                $_.Timestamp -eq $fileTimestamp
                             }
-                            catch {
-                                 # If the timestamp is malformed or cannot be converted then warning
-                                Write-Warning "$($Culture.WarningDateTime) '$($matches[2])'"
+
+                            if(-not $ModifiedFileExists){
+                                $Log.Files.Modified += [pscustomobject]@{
+                                    FilePath   = $filePath    
+                                    FileSize   = $fileSizeRaw  
+                                    Timestamp  = $fileTimestamp 
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningModifiedFileExist) : $($ModifiedFileExists.FilePath)"
                             }
-                        }
-
-                        # Capture the full path of the file
-                        $filePath = $matches[3].Trim()
-
-                        # Adding the file to the list
-                        $Log.Files.Lonely += [pscustomobject]@{
-                            FilePath   = $filePath    
-                            FileSize   = $fileSizeRaw  
-                            Timestamp  = $fileTimestamp 
                         }
                     }
+                #endregion Classes : Files : ModifiedFile
+                #region Classes : Files : LonelyFile 
+                    $LonelyFileClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.LonelyFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$" })
+                    $LonelyFileClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.LonelyFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$"){
+                            $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
+                            $fileTimestamp = if ($matches[2]) { [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null) } else { $null }
+                            $filePath = $matches[3].Trim()
 
-                    # Gestion des fichiers identiques (SameFiles) avec récupération de la taille et de l'horodatage si présent
-                    elseif ($line -match "\s*$($Culture.SameFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$") {
-                        # Capture the raw file size (with or without units), if present
-                        $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
-
-                        # Initialize the variable for the timestamp
-                        $fileTimestamp = $null
-    
-                        # If a timestamp is captured, try to convert it to a DateTime object
-                        if ($matches[2]) {
-                            try {
-                                 # ParseExact attempts to convert the timestamp to the format "yyyy/MM/dd HH:mm:ss"
-                                $fileTimestamp = [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null)
+                            $LonelyFileExists = $Log.Files.Lonely | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.FileSize -eq $fileSizeRaw -and
+                                $_.Timestamp -eq $fileTimestamp
                             }
-                            catch {
-                                 # If the timestamp is malformed or cannot be converted then warning
-                                Write-Warning "$($Culture.WarningDateTime) '$($matches[2])'"
+
+                            if(-not $LonelyFileExists){
+                                $Log.Files.Lonely += [pscustomobject]@{
+                                    FilePath   = $filePath    
+                                    FileSize   = $fileSizeRaw  
+                                    Timestamp  = $fileTimestamp 
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningLonelyFileExist) : $($LonelyFileExists.FilePath)"
                             }
-                        }
-
-                        # Capture the full path of the file
-                        $filePath = $matches[3].Trim()
-
-                        # Adding the file to the list
-                        $Log.Files.Same += [pscustomobject]@{
-                            FilePath   = $filePath    
-                            FileSize   = $fileSizeRaw  
-                            Timestamp  = $fileTimestamp  
                         }
                     }
+                #endregion Classes : Files : LonelyFile
+                #region Classes : Files : SameFile
+                    $SameFileClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.SameFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$" })
+                    $SameFileClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.SameFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$"){
+                            $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
+                            $fileTimestamp = if ($matches[2]) { [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null) } else { $null }
+                            $filePath = $matches[3].Trim()
 
-                    # Gestion des fichiers plus récent (Newer) avec récupération de la taille et de l'horodatage si présent
-                    elseif ($line -match "\s*$($Culture.NewerFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$") {
-                        # Capture the raw file size (with or without units), if present
-                        $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
-
-                        # Initialize the variable for the timestamp
-                        $fileTimestamp = $null
-    
-                        # If a timestamp is captured, try to convert it to a DateTime object
-                        if ($matches[2]) {
-                            try {
-                                 # ParseExact attempts to convert the timestamp to the format "yyyy/MM/dd HH:mm:ss"
-                                $fileTimestamp = [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null)
+                            $SameFileExists = $Log.Files.Same | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.FileSize -eq $fileSizeRaw -and
+                                $_.Timestamp -eq $fileTimestamp
                             }
-                            catch {
-                                 # If the timestamp is malformed or cannot be converted then warning
-                                Write-Warning "$($Culture.WarningDateTime) '$($matches[2])'"
+
+                            if(-not $SameFileExists){
+                                $Log.Files.Same += [pscustomobject]@{
+                                    FilePath   = $filePath    
+                                    FileSize   = $fileSizeRaw  
+                                    Timestamp  = $fileTimestamp 
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningSameFileExist) : $($SameFileExists.FilePath)"
                             }
-                        }
-
-                        # Capture the full path of the file
-                        $filePath = $matches[3].Trim()
-
-                        # Check if already captured
-                        $NewerFileExists = $Log.Files.Newer | Where-Object {
-                            $_.FilePath -eq $filePath -and
-                            $_.FileSize -eq $fileSizeRaw -and
-                            $_.Timestamp -eq $fileTimestamp
-                        }
-
-                        if(-not $NewerFileExists){
-                            # Adding the file to the list
-                            $Log.Files.Newer += [pscustomobject]@{
-                                FilePath   = $filePath    
-                                FileSize   = $fileSizeRaw  
-                                Timestamp  = $fileTimestamp  
-                            }
-                        }else{
-                            Write-Warning "$($Culture.WarningNewerFileExist) : $($NewerFileExists.FilePath)"
                         }
                     }
+                #endregion Classes : Files : SameFile
+                #region Classes : Files : NewerFile
+                    $NewerFileClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.NewerFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$" })
+                    $NewerFileClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.NewerFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$"){
+                            $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
+                            $fileTimestamp = if ($matches[2]) { [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null) } else { $null }
+                            $filePath = $matches[3].Trim()
 
-                    # Older file management with recovery of size and timestamp if present
-                    elseif ($line -match "\s*$($Culture.OlderFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$") {
-                        # Capture the raw file size (with or without units), if present
-                        $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
-
-                        # Initialize the variable for the timestamp
-                        $fileTimestamp = $null
-    
-                        # If a timestamp is captured, try to convert it to a DateTime object
-                        if ($matches[2]) {
-                            try {
-                                 # ParseExact attempts to convert the timestamp to the format "yyyy/MM/dd HH:mm:ss"
-                                $fileTimestamp = [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null)
+                            $NewerFileExists = $Log.Files.Newer | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.FileSize -eq $fileSizeRaw -and
+                                $_.Timestamp -eq $fileTimestamp
                             }
-                            catch {
-                                 # If the timestamp is malformed or cannot be converted then warning
-                                Write-Warning "$($Culture.WarningDateTime) '$($matches[2])'"
+
+                            if(-not $NewerFileExists){
+                                $Log.Files.Newer += [pscustomobject]@{
+                                    FilePath   = $filePath    
+                                    FileSize   = $fileSizeRaw  
+                                    Timestamp  = $fileTimestamp 
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningNewerFileExist) : $($NewerFileExists.FilePath)"
                             }
-                        }
-
-                        # Capture the full path of the file
-                        $filePath = $matches[3].Trim()
-
-                        # Check if already captured
-                        $OlderFileExists = $Log.Files.Older | Where-Object {
-                            $_.FilePath -eq $filePath -and
-                            $_.FileSize -eq $fileSizeRaw -and
-                            $_.Timestamp -eq $fileTimestamp
-                        }
-
-                        if(-not $OlderFileExists){
-                            # Adding the file to the list
-                            $Log.Files.Older += [pscustomobject]@{
-                                FilePath   = $filePath    # Chemin du fichier
-                                FileSize   = $fileSizeRaw  # Taille brute avec ou sans unité
-                                Timestamp  = $fileTimestamp  # Horodatage converti en DateTime (ou null si absent)
-                            }
-                        }else{
-                             Write-Warning "$($Culture.WarningOlderFileExist) : $($NewerFileExists.FilePath)"
                         }
                     }
+                #endregion Classes : Files : NewerFile
+                #region Classes : Files : OlderFile
+                    $OlderFileClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.OlderFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$" })
+                    $OlderFileClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.OlderFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$"){
+                            $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
+                            $fileTimestamp = if ($matches[2]) { [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null) } else { $null }
+                            $filePath = $matches[3].Trim()
 
-					<#
-						Retrieving error information with the action and the error code.
-						Warning this condition must be before the retrieval of the Extra File (otherwise catch by the extra file)
-					#>
-                    elseif ($line -match "\s*($($Culture.Error)\s+\d+)\s+\((0x[0-9A-F]+)\)\s+($($Culture.ErrorCopyFile)|$($Culture.ErrorDelFile)|$($Culture.ErrorDelExtraFile))\s+(.+)$") {
-                        $filePath = $Matches[4].Trim()    # Le chemin du fichier complet (local ou UNC)
-                        $errorInfo = "$($Matches[1]) $($Matches[2])"  # Le code d'erreur complet
-                        $errorAction = $Matches[3].Trim()  # L'action (Copying File, Deleting File, etc.)
-
-                        # Check if already captured
-                        $FailedFileExists = $Log.Files.Failed | Where-Object {
-                            $_.FilePath -eq $filePath -and
-                            $_.ErrorInfo -eq $errorInfo -and
-                            $_.ErrorAction -eq $errorAction
-                        }
-
-                        if (-not $FailedFileExists) {
-                           # Adding the file to the list
-                            $Log.Files.Failed += [pscustomobject]@{
-                                FilePath   = $filePath    
-                                ErrorInfo  = $errorInfo   
-                                ErrorAction = $errorAction 
+                            $OlderFileExists = $Log.Files.Older | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.FileSize -eq $fileSizeRaw -and
+                                $_.Timestamp -eq $fileTimestamp
                             }
-                        }else{
-                            Write-Warning "$($Culture.WarningFailedFileExist) : $($FailedFileExists.FilePath)"
+
+                            if(-not $OlderFileExists){
+                                $Log.Files.Older += [pscustomobject]@{
+                                    FilePath   = $filePath    
+                                    FileSize   = $fileSizeRaw  
+                                    Timestamp  = $fileTimestamp 
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningOlderFileExist) : $($OlderFileExists.FilePath)"
+                            }
                         }
                     }
+                #endregion Classes : Files : OlderFile
+                #region Classes : Files : ExtraFile
+                    $ExtraFileClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.ExtraFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$" })
+                    $ExtraFileClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.ExtraFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$"){
+                            $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
+                            $fileTimestamp = if ($matches[2]) { [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null) } else { $null }
+                            $filePath = $matches[3].Trim()
 
-                    # Management of additional files (Extra) with recovery of size and timestamp if present
-                    elseif ($line -match "\s*$($Culture.ExtraFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$") {
-                        # Capture the raw file size (with or without units), if present
-                        $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
-
-                        # Initialize the variable for the timestamp
-                        $fileTimestamp = $null
-    
-                        # If a timestamp is captured, try to convert it to a DateTime object
-                        if ($matches[2]) {
-                            try {
-                                 # ParseExact attempts to convert the timestamp to the format "yyyy/MM/dd HH:mm:ss"
-                                $fileTimestamp = [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null)
+                            $ExtraFileExists = $Log.Files.Extra | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.FileSize -eq $fileSizeRaw -and
+                                $_.Timestamp -eq $fileTimestamp
                             }
-                            catch {
-                                 # If the timestamp is malformed or cannot be converted then warning
-                                Write-Warning "$($Culture.WarningDateTime) '$($matches[2])'"
+
+                            if(-not $ExtraFileExists){
+                                $Log.Files.Extra += [pscustomobject]@{
+                                    FilePath   = $filePath    
+                                    FileSize   = $fileSizeRaw  
+                                    Timestamp  = $fileTimestamp 
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningExtraFileExist) : $($ExtraFileExists.FilePath)"
                             }
-                        }
-
-                        # Capture the full path of the file
-                        $filePath = $matches[3].Trim()
-
-						#Check if already captured
-                        $ExtraFileExists = $Log.Files.Extra | Where-Object {
-                            $_.FilePath -eq $filePath -and
-                            $_.FileSize -eq $fileSizeRaw -and
-                            $_.Timestamp -eq $fileTimestamp
-                        }
-
-                        if(-not $ExtraFileExists){
-                            # Adding the file to the list
-                            $Log.Files.Extra += [pscustomobject]@{
-                                FilePath   = $filePath  
-                                FileSize   = $fileSizeRaw  
-                                Timestamp  = $fileTimestamp  
-                            }
-                        }else{
-                            Write-Warning "$($Culture.WarningExtraFileExist) : $($ExtraFileExists.FilePath)"
                         }
                     }
+                #endregion Classes : Files : ExtraFile
+                #Region Classes : Files : TweakedFile
+                    $TweakedFileClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.TweakedFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$" })
+                    $TweakedFileClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.TweakedFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$"){
+                            $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
+                            $fileTimestamp = if ($matches[2]) { [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null) } else { $null }
+                            $filePath = $matches[3].Trim()
 
-                    # Management of modified files (Minor modification of attribute or timestamp type) (Tweaked) with recovery of size and timestamp if present
-                    elseif ($line -match "\s*$($Culture.TweakedFile)\s+([\d\.]+(?:\s*\w+)?)?\s*(\d{4}/\d{2}/\d{2}\s\d{2}:\d{2}:\d{2})?\s*(\w:[\\/].+|\\\\.+)$") {
-                        # Capture the raw file size (with or without units), if present
-                        $fileSizeRaw = if ($matches[1]) { $matches[1].Trim() } else { $null }
-
-                        # Initialize the variable for the timestamp
-                        $fileTimestamp = $null
-    
-                        # If a timestamp is captured, try to convert it to a DateTime object
-                        if ($matches[2]) {
-                            try {
-                                 # ParseExact attempts to convert the timestamp to the format "yyyy/MM/dd HH:mm:ss"
-                                $fileTimestamp = [datetime]::ParseExact($matches[2].Trim(), "yyyy/MM/dd HH:mm:ss", $null)
+                            $TweakedFileExists = $Log.Files.Tweaked | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.FileSize -eq $fileSizeRaw -and
+                                $_.Timestamp -eq $fileTimestamp
                             }
-                            catch {
-                                 # If the timestamp is malformed or cannot be converted then warning
-                                Write-Warning "$($Culture.WarningDateTime) '$($matches[2])'"
-                            }
-                        }
 
-                        # Capture the full path of the file
-                        $filePath = $matches[3].Trim()
-						
-						#Check if already captured
-                        $TweakedFileExists = $Log.Files.Tweaked | Where-Object {
-                            $_.FilePath -eq $filePath -and
-                            $_.FileSize -eq $fileSizeRaw -and
-                            $_.Timestamp -eq $fileTimestamp
-                        }
-
-                        if(-not $TweakedFileExists){
-                            # Adding the file to the list
-                            $Log.Files.Tweaked += [pscustomobject]@{
-                                FilePath   = $filePath   
-                                FileSize   = $fileSizeRaw  
-                                Timestamp  = $fileTimestamp 
+                            if(-not $TweakedFileExists){
+                                $Log.Files.Tweaked += [pscustomobject]@{
+                                    FilePath   = $filePath    
+                                    FileSize   = $fileSizeRaw  
+                                    Timestamp  = $fileTimestamp 
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningTweakedFileExist) : $($TweakedFileExists.FilePath)"
                             }
-                        }else{
-                            Write-Warning "$($Culture.WarningTweakedFileExist) : $($TweakedFileExists.FilePath)"
                         }
                     }
-                #endregion END Parsing File Classes
+                #endregion Classes : Files : TweakedFile
+                #region Files : FailedFiles
+                    #This just capture the failed files when there is a line with Error, Copying File, Deleting File, Deleting Extra File. There isn't a Classes for FailedFiles.
+                    $FailedFiles = @($LogContent | Where-Object { $_ -match "\s*($($Culture.Error)\s+\d+)\s+\((0x[0-9A-F]+)\)\s+($($Culture.ErrorCopyFile)|$($Culture.ErrorDelFile)|$($Culture.ErrorDelExtraFile))\s+(.+)$" })
+                    $FailedFiles | ForEach-Object {
+                        if($_ -match "\s*($($Culture.Error)\s+\d+)\s+\((0x[0-9A-F]+)\)\s+($($Culture.ErrorCopyFile)|$($Culture.ErrorDelFile)|$($Culture.ErrorDelExtraFile))\s+(.+)$"){
+                            $filePath = $Matches[4].Trim()   
+                            $errorInfo = "$($Matches[1]) $($Matches[2])"  # Error code and error number
+                            $errorAction = $Matches[3].Trim()    # Action (Copying File, Deleting File, etc.)
 
-                #region Parsing Directory Classes
-                   #Note: Error and duplicate handling do not seem to be done at the folder level. So no such analysis in this section.
-
-                   # New Directory
-                   elseif ($line -match "\s*$($Culture.NewDir)\s+(-?\d+)\s+(.+)$") {
-                        $itemCount = [int]$matches[1].Trim()  # Convert the number, whether negative or positive (because -1 when deleting a folder)
-                        $dirPath = $matches[2].Trim()         # Get the directory path
-
-                        # Adding to list
-                        $Log.Dirs.New += [pscustomobject]@{
-                            DirPath   = $dirPath
-                            ItemCount = $itemCount
-                        }
-                    }
-
-                    # Extra Directory
-                    elseif ($line -match "\s*$($Culture.ExtraDir)\s+(-?\d+)\s+(.+)$") {
-                        $itemCount = [int]$matches[1].Trim()  # Convert the number, whether negative or positive (because -1 when deleting a folder)
-                        $dirPath = $matches[2].Trim()         # Get the directory path
-
-                        # Adding to list
-                        $Log.Dirs.Extra += [pscustomobject]@{
-                            DirPath   = $dirPath
-                            ItemCount = $itemCount
-                        }
-                    }
+                            $FailedFileExists = $Log.Files.Failed | Where-Object {
+                                $_.FilePath -eq $filePath -and
+                                $_.ErrorInfo -eq $errorInfo -and
+                                $_.ErrorAction -eq $errorAction
+                            }
             
-                    # Lonely Directory
-                    #(.+\\)$ : This part of the regular expression checks that the path ends with a backslash \, which identifies a directory.
-                    elseif ($line -match "\s*$($Culture.LonelyDir)\s+(-?\d+)\s+(.+\\)$") {
-                        $itemCount = [int]$matches[1].Trim()  # Convert the number, whether negative or positive (because -1 when deleting a folder)
-                        $dirPath = $matches[2].Trim()         # Get the directory path
-
-                        # Adding to list
-                        $Log.Dirs.Lonely += [pscustomobject]@{
-                            DirPath   = $dirPath
-                            ItemCount = $itemCount
+                            if (-not $FailedFileExists) {
+                                $Log.Files.Failed += [pscustomobject]@{
+                                    FilePath    = $filePath    
+                                    ErrorInfo   = $errorInfo   
+                                    ErrorAction = $errorAction 
+                                }
+                            } else {
+                                Write-Warning "$($Culture.WarningFailedFileExist) : $($FailedFileExists.FilePath)"
+                            }
                         }
                     }
-                #endregion END Parsing Directory Classes
-            } #end of elseif $Parsetype -eq Full
-        #endregion FIN Parsing Full (Répertoire et Fichiers)
 
-        #region Parsing Summary
-            # Parsing Summary
-            if ($line -match "^\s*$($Culture.DirsSummary)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$") {
-                $Log.SummaryInfo.Dirs.Total    = [int]$matches[1]
-                $Log.SummaryInfo.Dirs.Copied   = [int]$matches[2]
-                $Log.SummaryInfo.Dirs.Skipped  = [int]$matches[3]
-                $Log.SummaryInfo.Dirs.Mismatch = [int]$matches[4]
-                $Log.SummaryInfo.Dirs.Failed   = [int]$matches[5]
-                $Log.SummaryInfo.Dirs.Extras   = [int]$matches[6]
-            }
-            elseif ($line -match "^\s*$($Culture.FilesSummary)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$") {
-                $Log.SummaryInfo.Files.Total    = [int]$matches[1]
-                $Log.SummaryInfo.Files.Copied   = [int]$matches[2]
-                $Log.SummaryInfo.Files.Skipped  = [int]$matches[3]
-                $Log.SummaryInfo.Files.Mismatch = [int]$matches[4]
-                $Log.SummaryInfo.Files.Failed   = [int]$matches[5]
-                $Log.SummaryInfo.Files.Extras   = [int]$matches[6]
-            }
+                #endregion Files : FailedFiles
+                #region Classes : Directories : NewDir
+                    $NewDirClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.NewDir)\s+(\w:[\\/].+|\\\\.+)$" })
+                    $NewDirClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.NewDir)\s+(\w:[\\/].+|\\\\.+)$"){
+                            $dirPath = $matches[1].Trim()
 
-            # Parsing Ended time
-            elseif ($line -match "^\s*$($Culture.Ended)\s*(.+)$") {
-                $Log.SummaryInfo.Ended = $Matches[1].Trim()
-            }
-        #endregion END Parsing Summary
-    }
+                            $NewDirExists = $Log.Dirs.New | Where-Object {
+                                $_.DirPath -eq $dirPath
+                            }
 
+                            if(-not $NewDirExists){
+                                $Log.Dirs.New += [pscustomobject]@{
+                                    DirPath = $dirPath
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningNewDirExist) : $($NewDirExists.DirPath)"
+                            }
+                        }
+                    }
+                #endregion Classes : Directories : NewDir
+                #region Classes : Directories : ExtraDir
+                    $ExtraDirClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.ExtraDir)\s+(\w:[\\/].+|\\\\.+)$" })
+                    $ExtraDirClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.ExtraDir)\s+(\w:[\\/].+|\\\\.+)$"){
+                            $dirPath = $matches[1].Trim()
+
+                            $ExtraDirExists = $Log.Dirs.Extra | Where-Object {
+                                $_.DirPath -eq $dirPath
+                            }
+
+                            if(-not $ExtraDirExists){
+                                $Log.Dirs.Extra += [pscustomobject]@{
+                                    DirPath = $dirPath
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningExtraDirExist) : $($ExtraDirExists.DirPath)"
+                            }
+                        }
+                    }
+                #endregion Classes : Directories : ExtraDir
+                #region Classes : Directories : LonelyDir
+                    $LonelyDirClass = @($LogContent | Where-Object { $_ -match "\s*$($Culture.LonelyDir)\s+(\w:[\\/].+|\\\\.+)$" })
+                    $LonelyDirClass | ForEach-Object {
+                        if($_ -match "\s*$($Culture.LonelyDir)\s+(\w:[\\/].+|\\\\.+)$"){
+                            $dirPath = $matches[1].Trim()
+
+                            $LonelyDirExists = $Log.Dirs.Lonely | Where-Object {
+                                $_.DirPath -eq $dirPath
+                            }
+
+                            if(-not $LonelyDirExists){
+                                $Log.Dirs.Lonely += [pscustomobject]@{
+                                    DirPath = $dirPath
+                                }
+                            }else{
+                                Write-Warning "$($Culture.WarningLonelyDirExist) : $($LonelyDirExists.DirPath)"
+                            }
+                        }
+                    }
+                #endregion Classes : Directories : LonelyDir
+            #endregion Files and Directories
+        }
+
+        #region Summary
+            #region Directories
+                $SummaryDirectories = $LogContent | Where-Object { $_ -match "^\s*$($Culture.DirsSummary)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$" }
+                if($SummaryDirectories){
+                    $Log.SummaryInfo.Dirs.Total    = [int]$matches[1]
+                    $Log.SummaryInfo.Dirs.Copied   = [int]$matches[2]
+                    $Log.SummaryInfo.Dirs.Skipped  = [int]$matches[3]
+                    $Log.SummaryInfo.Dirs.Mismatch = [int]$matches[4]
+                    $Log.SummaryInfo.Dirs.Failed   = [int]$matches[5]
+                    $Log.SummaryInfo.Dirs.Extras   = [int]$matches[6]
+                }
+            #endregion Directories
+            #region Files
+                $SummaryFiles = $LogContent | Where-Object { $_ -match "^\s*$($Culture.FilesSummary)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)$" }
+                if($SummaryFiles){
+                    $Log.SummaryInfo.Files.Total    = [int]$matches[1]
+                    $Log.SummaryInfo.Files.Copied   = [int]$matches[2]
+                    $Log.SummaryInfo.Files.Skipped  = [int]$matches[3]
+                    $Log.SummaryInfo.Files.Mismatch = [int]$matches[4]
+                    $Log.SummaryInfo.Files.Failed   = [int]$matches[5]
+                    $Log.SummaryInfo.Files.Extras   = [int]$matches[6]
+                }
+            #endregion Files
+            #region Ended Datetime
+                $SummaryEnded = $LogContent | Where-Object { $_ -match "^\s*$($Culture.Ended)\s*(.+)$" }
+                if($SummaryEnded){
+                    $Log.SummaryInfo.Ended = $Matches[1].Trim()
+                }
+            #endregion Ended Datetime 
+        #endregion Summary
+    #endregion Parsing LogContent
+    
     #region Calculation Extra data
         # Calculate total time based on HeaderInfo.Start and SummaryInfo.Ended if exists
         if ($Log.HeaderInfo.Start -and $Log.SummaryInfo.Ended) {
@@ -765,7 +673,6 @@ function ConvertFrom-RobocopLog {
         }
     #endregion END Calculation Extra data
 
-	#return Object
     return $Log
 }
 
