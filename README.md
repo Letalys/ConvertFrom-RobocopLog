@@ -11,6 +11,8 @@ This script supports various Robocopy log formats with different log options, in
 - Complete analysis of copied, modified, error, or ignored files.
 - Processing of overall statistics (number of files, bytes, errors) with the possibility of calculating the total processing time.
 - Flexible filtering options through parameters to include or exclude file and directory classes for parsing.
+- **Raw data extraction**: With the `-RawParsing` option, users can retrieve unprocessed log lines for further customization or external analysis.
+- **Verbose output**: Enhanced progress tracking and diagnostic output with `Write-Verbose`, available by specifying the `-Verbose` flag.
 
 This script is ideal for system administrators looking to better understand or automate the management of Robocopy operations in complex environments, while maintaining an accurate view of performance and results.
 
@@ -38,6 +40,7 @@ To use ConvertFrom-RobocopLog.ps1, specify the Robocopy log file to analyze usin
 - `-ExcludeFileClass` : File classes to exclude from the parsing (optional).
 - `-IncludeDirClass` : Directory classes to include in the parsing (optional, default "All").
 - `-ExcludeDirClass` : Directory classes to exclude from the parsing (optional).
+- `-RawParsing` : Enables output of unprocessed log lines, bypassing structured parsing (optional).
 
 ### Second Way: Use the internal function and integrate it into your own scripts
 
@@ -60,6 +63,11 @@ $LOG = .\ConvertFrom-RobocopLog.ps1 -RoboLog "C:\Logs\RobocopyLog.txt" -LogLangu
 Analysis excluding all file and directory classes (only header and summary will be parsed):
 ```
 $LOG = .\ConvertFrom-RobocopLog.ps1 -RoboLog "C:\Logs\RobocopyLog.txt" -ExcludeFileClass "All" -ExcludeDirClass "All"
+```
+
+Raw data extraction mode for unprocessed log lines:
+```
+$LOG = .\ConvertFrom-RobocopLog.ps1 -RoboLog "C:\Logs\RobocopyLog.txt" -RawParsing
 ```
 
 ### Object Properties
@@ -260,6 +268,10 @@ Discordance Yes (Fic)   Yes (Rép)        n/a             n/a            n/a
 - Version `2.1`  | 2024-11-03
 	- *Issue #4* : Integration of parameters for selecting file and directory classes to return in the object. 
 	- Removal of the ParseType option in favor of new options allowing you to exclude the recovery of file or directory classes to only manage the header and summary.
+- Version `2.2`  | 2024-11-03
+	- *Issue #7* : Add RawParsing Option to return the raw data of the file classes without structuring them.
+	- Add Write-Verbose to follow the progress of the script When the -Verbose parameter is used.
+	- Update the help section to include the new RawParsing parameter and the new behavior of the script.
 
 ## Links
 - [https://github.com/Letalys/ConvertFrom-RobocopLog](https://github.com/Letalys/ConvertFrom-RobocopLog)
